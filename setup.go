@@ -226,6 +226,12 @@ func parse(c *caddy.Controller) (Git, error) {
 // parseURL validates if repoUrl is a valid git url and appends
 // with .git if missing.
 func parseURL(repoURL string, private bool) (*url.URL, error) {
+	// If repoURL is already a valid URL with a non-empty scheme, use it as-is.
+	u, err := url.Parse(repoURL)
+	if err == nil && u.IsAbs() {
+		return u, nil
+	}
+
 	// scheme
 	urlParts := strings.Split(repoURL, "://")
 	switch {
@@ -247,9 +253,5 @@ func parseURL(repoURL string, private bool) (*url.URL, error) {
 		repoURL += ".git"
 	}
 
-	u, err := url.Parse(repoURL)
-	if err != nil {
-		return nil, err
-	}
-	return u, nil
+	return url.Parse(repoURL)
 }
