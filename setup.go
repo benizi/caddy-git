@@ -145,6 +145,19 @@ func parse(c *caddy.Controller) (Git, error) {
 				repo.CloneArgs = c.RemainingArgs()
 			case "pull_args":
 				repo.PullArgs = c.RemainingArgs()
+			case "mode":
+				if !c.NextArg() {
+					return nil, c.ArgErr()
+				}
+				mode := c.Val()
+				switch mode {
+				case "fetch":
+					repo.Fetch = true
+				case "pull":
+					repo.Fetch = false
+				default:
+					return nil, c.Errf("invalid mode %v", mode)
+				}
 			case "hook":
 				if !c.NextArg() {
 					return nil, c.ArgErr()

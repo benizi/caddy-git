@@ -67,6 +67,7 @@ type Repo struct {
 	Interval   time.Duration // Interval between pulls
 	CloneArgs  []string      // Additonal cli args to pass to git clone
 	PullArgs   []string      // Additonal cli args to pass to git pull
+	Fetch      bool          // If true, use `git fetch` to avoid `pull` conflicts.
 	Then       []Then        // Commands to execute after successful git pull
 	pulled     bool          // true if there was a successful pull
 	lastPull   time.Time     // time of the last successful pull
@@ -109,6 +110,14 @@ func (r *Repo) Pull() error {
 		Logger().Println("No new changes.")
 		return nil
 	}
+
+	if r.Fetch && r.lastCommit != lastCommit {
+		err = r.resetHard()
+		if err != nil {
+			return err
+		}
+	}
+
 	return r.execThen()
 }
 
@@ -125,6 +134,11 @@ func (r *Repo) pull() error {
 		return r.checkoutLatestTag()
 	}
 
+	// If pull is really a fetch...
+	if r.Fetch {
+		return r.fetch()
+	}
+
 	params := append([]string{"pull"}, append(r.PullArgs, "origin", r.Branch)...)
 	var err error
 	if err = r.gitCmd(params, r.Path); err == nil {
@@ -134,6 +148,25 @@ func (r *Repo) pull() error {
 		r.lastCommit, err = r.mostRecentCommit()
 	}
 	return err
+}
+
+// fetch runs a git fetch against the remote repo.
+func (r *Repo) fetch() error {
+	err := r.gitCmd([]string{"fetch"}, r.Path)
+	if err != nil {
+		return err
+	}
+	r.pulled = true
+	r.lastPull = time.Now()
+	Logger().Printf("%v fetched.\n", r.URL)
+	r.lastCommit, err = r.currentRevision()
+	return err
+}
+
+// currentRevision finds the upstream revision of the current git branch.
+func (r *Repo) currentRevision() (string, error) {
+	params := []string{"rev-parse", fmt.Sprintf("%s@{upstream}", r.Branch)}
+	return runCmdOutput(gitBinary, params, r.Path)
 }
 
 // clone performs git clone.
@@ -191,6 +224,16 @@ func (r *Repo) checkoutCommit(commitHash string) error {
 	params := []string{"checkout", commitHash}
 	if err = r.gitCmd(params, r.Path); err == nil {
 		Logger().Printf("Commit %v checkout done.\n", commitHash)
+	}
+	return err
+}
+
+// resetHard resets to the last commit with `--hard`.
+func (r *Repo) resetHard() error {
+	params := []string{"reset", "--hard", r.lastCommit}
+	err := r.gitCmd(params, r.Path)
+	if err == nil {
+		Logger().Printf("Reset --hard to %v done.\n", r.lastCommit)
 	}
 	return err
 }
